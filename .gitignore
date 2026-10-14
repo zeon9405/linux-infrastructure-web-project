@@ -1,0 +1,22 @@
+# Java compiled files
+*.class
+
+# Backups and old source versions
+*.bak
+*.before-post
+*.original
+
+# Secrets and environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Logs
+*.log
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

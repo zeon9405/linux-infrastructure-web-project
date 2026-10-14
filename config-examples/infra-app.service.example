@@ -1,0 +1,15 @@
+[Unit]
+Description=Infra Project Java Application Server
+After=network.target
+
+[Service]
+Type=simple
+User=infraapp
+WorkingDirectory=/opt/infra-project/java
+EnvironmentFile=/etc/infra-project/infra-app.env
+ExecStart=/usr/bin/java -cp /opt/infra-project/java:/usr/lib/java/mariadb-java-client.jar AppServer
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
