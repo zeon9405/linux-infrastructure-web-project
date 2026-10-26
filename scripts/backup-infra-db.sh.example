@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Example only: review paths, MariaDB authentication, and retention behavior
+# before using this script in a real environment.
+
+set -Eeuo pipefail
+umask 077
+
+DB_NAME="${DB_NAME:-infra_db}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/infra-db}"
+LOG_FILE="${LOG_FILE:-/var/log/backup-infra-db.log}"
+RETENTION_DAYS="${RETENTION_DAYS:-7}"
+ENABLE_RETENTION_DELETE="${ENABLE_RETENTION_DELETE:-false}"
+
+TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_${TIMESTAMP}.sql"
+TMP_FILE="${BACKUP_FILE}.tmp"
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG_FILE"
+}
+
+cleanup() {
+    local status=$?
+    if [[ -n "${TMP_FILE:-}" ]]; then
+        rm -f -- "$TMP_FILE"
+    fi
+    if (( status != 0 )); then
+        log "ERROR: backup script exited with status ${status}"
+    fi
+}
+trap cleanup EXIT
+
+mkdir -p "$BACKUP_DIR"
+touch "$LOG_FILE"
+chmod 600 "$LOG_FILE"
+
+log "Starting backup for database '${DB_NAME}'"
+
+if ! mariadb-dump --single-transaction "$DB_NAME" > "$TMP_FILE"; then
+    log "ERROR: mariadb-dump failed for database '${DB_NAME}'"
+    exit 1
+fi
+
+if [[ ! -s "$TMP_FILE" ]]; then
+    log "ERROR: temporary backup file is empty"
+    exit 1
+fi
+
+mv -- "$TMP_FILE" "$BACKUP_FILE"
+TMP_FILE=""
+
+log "Backup successful: ${BACKUP_FILE}"
+log "Backup file size: $(du -h "$BACKUP_FILE" | cut -f1)"
+
+# Remove only timestamped automated backups older than the retention period.
+# Test this find expression without -delete before enabling deletion.
+# Retention cleanup is disabled by default.
+if [[ "$ENABLE_RETENTION_DELETE" == "true" ]]; then
+    find "$BACKUP_DIR" -maxdepth 1 -type f \
+        -name "${DB_NAME}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9].sql" \
+        -mmin "+$((RETENTION_DAYS * 1440))" \
+        -print -delete >> "$LOG_FILE" 2>&1
+    log "Retention cleanup completed (retention: ${RETENTION_DAYS} days)"
+else
+    log "Retention cleanup skipped; deletion is disabled"
+fi
+
+log "Backup script finished"
